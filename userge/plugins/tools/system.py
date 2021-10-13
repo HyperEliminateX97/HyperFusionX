@@ -7,6 +7,8 @@
 #
 # All rights reserved.
 
+# additions by @Kakashi_HTK(TG)/@ashwinstr(GH)
+
 
 import asyncio
 import os
@@ -80,6 +82,7 @@ async def restart_(message: Message):
                 "`Heroku app found, trying to restart dyno...\nthis will take upto 30 sec`",
                 del_in=3,
             )
+            await FROZEN.drop()
             Config.HEROKU_APP.restart()
             time.sleep(30)
         else:
