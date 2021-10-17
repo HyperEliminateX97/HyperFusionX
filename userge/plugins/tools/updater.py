@@ -52,7 +52,7 @@ async def check_update(message: Message):
     flags = list(message.flags)
     pull_from_repo = False
     push_to_heroku = False
-    branch = "alpha"
+    branch = "DevX"
     u_repo = Config.UPSTREAM_REPO
     u_repo = u_repo.replace("/", " ")
     git_u_n = u_repo.split()[2]
