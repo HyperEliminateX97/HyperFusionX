@@ -13,7 +13,7 @@ from pyrogram.errors import (
 )
 from pyrogram.types import ChatPermissions
 
-from userge import Message, userge
+from userge import Config, Message, userge
 from userge.utils.functions import get_emoji_regex
 
 CHANNEL = userge.getCLogger(__name__)
@@ -462,7 +462,6 @@ async def unmute_usr(message: Message):
             "{tr}zombies -c [remove deleted accounts from group]",
         ],
     },
-    allow_channels=False,
     allow_bots=False,
     allow_private=False,
 )
@@ -528,7 +527,8 @@ async def zombie_clean(message: Message):
         if del_users > 0:
             del_stats = f"`Found` **{del_users}** `zombie accounts in this chat.`"
             await message.edit(
-                f"🕵️‍♂️ {del_stats} `you can clean them using .zombies -c`", del_in=5
+                f"🕵️‍♂️ {del_stats} you can clean them using `{Config.CMD_TRIGGER}zombies -c`",
+                del_in=5,
             )
             await CHANNEL.log(
                 "#ZOMBIE_CHECK\n\n"
@@ -636,7 +636,6 @@ async def pin_msgs(message: Message):
             "{tr}gpic -d [send to chat]",
         ],
     },
-    allow_channels=False,
     check_change_info_perm=True,
 )
 async def chatpic_func(message: Message):

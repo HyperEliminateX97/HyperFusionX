@@ -91,6 +91,9 @@ async def allow(message: Message):
         "header": "Activates guarding on inbox",
         "description": "Ones someone is allowed, "
         "Userge will not interfere or handle such private chats",
+        "flags": {
+            "-all": "disallow all",
+        },
         "usage": "{tr}nopm [username | userID]\nreply {tr}nopm to a message, "
         "do {tr}nopm in the private chat",
     },
@@ -99,6 +102,27 @@ async def allow(message: Message):
 )
 async def denyToPm(message: Message):
     """disallows to pm"""
+    if "-all" in message.flags:
+        await message.edit("`Disallowing all PMs...`")
+        one = 0
+        while True:
+            try:
+                usr = list(Config.ALLOWED_CHATS)[one]
+                one += 1
+            except BaseException:
+                break
+            try:
+                Config.ALLOWED_CHATS.remove(usr)
+                await ALLOWED_COLLECTION.delete_one({"_id": usr})
+            except BaseException:
+                pass
+        if not Config.ALLOWED_CHATS:
+            await message.edit("`Disallowed all PMs.`", del_in=5)
+        else:
+            await message.edit(
+                "`Something went wrong, not all PMs disallowed...`", del_in=5
+            )
+        return
     userid = await get_id(message)
     if userid:
         if userid in Config.ALLOWED_CHATS:

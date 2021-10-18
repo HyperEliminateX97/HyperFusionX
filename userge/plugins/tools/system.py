@@ -7,6 +7,8 @@
 #
 # All rights reserved.
 
+# additions by @Kakashi_HTK(TG)/@ashwinstr(GH)
+
 
 import asyncio
 import os
@@ -22,6 +24,7 @@ from userge.utils import runcmd, terminate
 
 SAVED_SETTINGS = get_collection("CONFIGS")
 DISABLED_CHATS = get_collection("DISABLED_CHATS")
+FROZEN = get_collection("FROZEN")
 
 MAX_IDLE_TIME = 300
 LOG = userge.getLogger(__name__)
@@ -79,10 +82,12 @@ async def restart_(message: Message):
                 "`Heroku app found, trying to restart dyno...\nthis will take upto 30 sec`",
                 del_in=3,
             )
+            await FROZEN.drop()
             Config.HEROKU_APP.restart()
             time.sleep(30)
         else:
             await message.edit("`Restarting [HARD] ...`", del_in=1)
+            await FROZEN.drop()
             asyncio.get_event_loop().create_task(userge.restart(hard=True))
     else:
         await message.edit("`Restarting [SOFT] ...`", del_in=1)
@@ -105,52 +110,6 @@ async def shutdown_(message: Message) -> None:
         await asyncio.sleep(1)
     await message.delete()
     terminate()
-
-
-@userge.on_cmd(
-    "die",
-    about={
-        "header": "set auto heroku dyno off timeout",
-        "flags": {"-t": "input offline timeout in min : default to 5min"},
-        "usage": "{tr}die [flags]",
-        "examples": ["{tr}die", "{tr}die -t5"],
-    },
-    allow_channels=False,
-)
-async def die_(message: Message) -> None:
-    """set offline timeout to die USERGE-X"""
-    global MAX_IDLE_TIME  # pylint: disable=global-statement
-    if not Config.HEROKU_APP:
-        await message.err("`heroku app not detected !`")
-        return
-    await message.edit("`processing ...`")
-    if Config.RUN_DYNO_SAVER:
-        if isinstance(Config.RUN_DYNO_SAVER, asyncio.Task):
-            Config.RUN_DYNO_SAVER.cancel()
-        Config.RUN_DYNO_SAVER = False
-        SAVED_SETTINGS.update_one(
-            {"_id": "DYNO_SAVER"}, {"$set": {"on": False}}, upsert=True
-        )
-        await message.edit(
-            "auto heroku dyno off worker has been **stopped**", del_in=5, log=__name__
-        )
-        return
-    time_in_min = int(message.flags.get("-t", 5))
-    if time_in_min < 5:
-        await message.err(f"`please set higher value [{time_in_min}] !`")
-        return
-    MAX_IDLE_TIME = time_in_min * 60
-    SAVED_SETTINGS.update_one(
-        {"_id": "DYNO_SAVER"},
-        {"$set": {"on": True, "timeout": MAX_IDLE_TIME}},
-        upsert=True,
-    )
-    await message.edit(
-        "auto heroku dyno off worker has been **started** " f"[`{time_in_min}`min]",
-        del_in=3,
-        log=__name__,
-    )
-    Config.RUN_DYNO_SAVER = asyncio.get_event_loop().create_task(_dyno_saver_worker())
 
 
 @userge.on_cmd(
@@ -336,13 +295,17 @@ async def enable_userbot(message: Message):
             await message.err(str(err))
             return
         if chat.id not in Config.DISABLED_CHATS:
-            await message.edit("this chat is already enabled!")
+            await message.edit("This chat is already enabled!")
         else:
             Config.DISABLED_CHATS.remove(chat.id)
+            if chat.type == "private":
+                c_name = " ".join([chat.first_name, chat.last_name or ""])
+            else:
+                c_name = chat.title
             await asyncio.gather(
                 DISABLED_CHATS.delete_one({"_id": chat.id}),
                 message.edit(
-                    f"CHAT : `{chat.title}` removed from **DISABLED_CHATS**!",
+                    f"CHAT : `{c_name}` removed from **DISABLED_CHATS**!\n`Bot might restart, wait for some time...`",
                     del_in=5,
                     log=__name__,
                 ),
@@ -370,7 +333,7 @@ async def disable_userbot(message: Message):
                 message.edit("**Disabled** all chats!", del_in=5),
             )
         else:
-            await message.err("invalid flag!")
+            await message.err("Invalid flag!")
     else:
         chat = message.chat
         if message.input_str:
@@ -380,15 +343,19 @@ async def disable_userbot(message: Message):
                 await message.err(str(err))
                 return
         if chat.id in Config.DISABLED_CHATS:
-            await message.edit("this chat is already disabled!")
+            await message.edit("This chat is already disabled!")
         elif chat.id == Config.LOG_CHANNEL_ID:
-            await message.err("can't disabled log channel")
+            await message.err("Can't disabled log channel")
         else:
+            if chat.type == "private":
+                c_name = " ".join([chat.first_name, chat.last_name or ""])
+            else:
+                c_name = chat.title
             Config.DISABLED_CHATS.add(chat.id)
             await asyncio.gather(
                 DISABLED_CHATS.insert_one({"_id": chat.id, "title": chat.title}),
                 message.edit(
-                    f"CHAT : `{chat.title}` added to **DISABLED_CHATS**!",
+                    f"CHAT : `{c_name}` added to **DISABLED_CHATS**!\n`Bot might restart, wait for some time...`",
                     del_in=5,
                     log=__name__,
                 ),
