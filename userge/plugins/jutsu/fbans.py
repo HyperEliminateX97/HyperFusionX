@@ -11,15 +11,10 @@ import asyncio
 import os
 
 from pyrogram import filters
-from pyrogram.errors import (
-    ChannelInvalid,
-    FloodWait,
-    Forbidden,
-    PeerIdInvalid,
-    UserBannedInChannel,
-)
+from pyrogram.errors import FloodWait, PeerIdInvalid, UserBannedInChannel
 
 from userge import Config, Message, get_collection, userge
+from userge.helpers import report_user
 
 FBAN_LOG_CHANNEL = os.environ.get("FBAN_LOG_CHANNEL")
 
@@ -216,11 +211,10 @@ async def fban_(message: Message):
     "fbanp",
     about={
         "header": "Fban with proof",
-        "description": "Fban user from the list of feds with replied message as proof",
+        "description": "Fban user from the list of feds with replied message as proof"
+        "\nWARNING: don't use if any of the fed group has links blocklisted",
         "flags": {
-            "-r": "give link to proof in reason, if FBAN_LOG_CHANNEL added",
-            "-s": "won't send proof to feds (silent), but will log in log channel + '-r'"
-            "\nWARNING: don't use -r or -s if any of the fed group has links blocklisted",
+            "-r": "remote fban, use with direct proof link",
         },
         "usage": "{tr}fbanp [direct reply to spammer] {reason}\n{tr}fbanp [reply to proof forwarded by you] {user id} {reason}",
     },
@@ -229,34 +223,76 @@ async def fban_(message: Message):
 )
 async def fban_p(message: Message):
     """Fban user from connected feds with proof."""
-    fban_arg = ["❯", "❯❯", "❯❯❯", "❯❯❯ <b>FBanned {}</b>"]
+    fban_arg = ["❯", "❯❯", "❯❯❯", "❯❯❯ <b>FBanned {}{}</b>"]
     d_err = ("Failed to detect user **{}**, fban might not work...",)
-    if not message.reply_to_message:
-        await message.err("Please reply to proof...", del_in=7)
+    if not FBAN_LOG_CHANNEL:
+        await message.edit(
+            "Add <code>FBAN_LOG_CHANNEL</code> to forward the proofs...", del_in=5
+        )
         return
-    PROOF_CHANNEL = FBAN_LOG_CHANNEL if FBAN_LOG_CHANNEL else Config.LOG_CHANNEL_ID
-    if ("-r" or "-s") in message.flags:
-        if not FBAN_LOG_CHANNEL:
-            await message.err(
-                "Add <code>FBAN_LOG_CHANNEL</code> to use reason flags..."
+    channel_ = await userge.get_chat(int(FBAN_LOG_CHANNEL))
+    if channel_.username is None or channel_.type != "channel":
+        await message.edit(
+            "Proof channel should be a <b>channel</b> and should be <b>public</b> for this command to work...",
+            del_in=5,
+        )
+        return
+    if "-r" in message.flags:
+        link_ = message.filtered_input_str
+        link_split = link_.split()
+        link_ = link_split[0]
+        try:
+            reason = " ".join(link_split[1:])
+        except BaseException:
+            reason = "Not specified"
+        try:
+            user_and_message = link_.split("/")
+            chat_id = user_and_message[-2]
+            if chat_id.isdigit():
+                chat_id = "-100" + str(chat_id)
+                chat_id = int(chat_id)
+            else:
+                chat_ = await userge.get_chat(chat_id)
+                chat_id = chat_.id
+            msg_id = int(user_and_message[-1])
+        except BaseException:
+            await message.edit(
+                "`Provide a proper spam message link to report...`", del_in=5
             )
             return
-        channel_ = await userge.get_chat(int(FBAN_LOG_CHANNEL))
-        if channel_.username is None:
-            await message.err(
-                "<b>Proof</b> channel can't private channel for <b>reason</b> flags..."
+        try:
+            msg_en = await userge.get_messages(chat_id, int(msg_id))
+            user = msg_en.from_user.id
+            proof = msg_en.message_id
+        except BaseException:
+            await message.edit(
+                "`Provide a proper spam message link to report...`", del_in=5
             )
             return
-    user = message.reply_to_message.from_user.id
-    input = message.filtered_input_str
-    reason = input
+        input = ""
+    else:
+        reply = message.reply_to_message
+        if not reply:
+            await message.err("Please reply to proof...", del_in=7)
+            return
+        chat_id = message.chat.id
+        user = reply.from_user.id
+        input = message.filtered_input_str
+        reason = input
+        msg_en = reply
+        proof = msg_en.message_id
+    fps = True
     if (
         user in Config.SUDO_USERS
         or user in Config.OWNER_ID
         or user == (await message.client.get_me()).id
     ):
+        fps = False
         if not input:
-            await message.err("Can't fban replied user, give user ID...", del_in=7)
+            await message.err(
+                "Can't fban replied/specified user because of them being SUDO_USER or OWNER, give user ID...",
+                del_in=5,
+            )
             return
         user = input.split()[0]
         reason = input.split()[1:]
@@ -266,7 +302,7 @@ async def fban_p(message: Message):
             user = user_.id
         except (PeerIdInvalid, IndexError):
             d_err = f"Failed to detect user **{user}**, fban might not work..."
-            await message.edit(d_err, del_in=7)
+            await message.edit(d_err, del_in=5)
             await CHANNEL.log(d_err)
         if (
             user in Config.SUDO_USERS
@@ -274,7 +310,7 @@ async def fban_p(message: Message):
             or user == (await message.client.get_me()).id
         ):
             return await message.err(
-                "Can't fban user that exists in SUDO or OWNERS...", del_in=7
+                "Can't fban user that exists in SUDO or OWNERS...", del_in=5
             )
     try:
         user_ = await userge.get_users(user)
@@ -288,40 +324,31 @@ async def fban_p(message: Message):
     r_update = []
     total = 0
     await message.edit(fban_arg[1])
-    from_ = message.chat.id
-    message.from_user.id
-    reply = message.reply_to_message
-    proof = reply.message_id
     log_fwd = await userge.forward_messages(
-        int(PROOF_CHANNEL),
-        from_chat_id=from_,
+        int(FBAN_LOG_CHANNEL),
+        from_chat_id=chat_id,
         message_ids=proof,
     )
     reason = reason or "Not specified"
-    if FBAN_LOG_CHANNEL and ("-r" in message.flags or "-s" in message.flags):
-        reason += " || {" + f"{log_fwd.link}" + "}"
+    reason += " || {" + f"{log_fwd.link}" + "}"
+    if fps:
+        report_user(
+            chat=chat_id,
+            user_id=user,
+            msg=msg_en,
+            msg_id=proof,
+            reason=reason,
+        )
+        reported = "</b>and <b>reported "
+    else:
+        reported = ""
     async for data in FED_LIST.find():
         total += 1
         chat_id = int(data["chat_id"])
         try:
-            if chat_id != from_ and "-s" not in message.flags:
-                fwd = await userge.forward_messages(
-                    chat_id=chat_id,
-                    from_chat_id=from_,
-                    message_ids=proof,
-                )
-                fwd_id = fwd.message_id
-            elif "-s" in message.flags:
-                fwd_id = None
-            else:
-                fwd_id = message.reply_to_message.message_id
-        except (Forbidden, ChannelInvalid, UserBannedInChannel):
-            fwd_id = None
-        try:
             await userge.send_message(
                 chat_id,
                 f"/fban {user} {reason}",
-                reply_to_message_id=fwd_id,
                 disable_web_page_preview=True,
             )
         except UserBannedInChannel:
@@ -356,36 +383,19 @@ async def fban_p(message: Message):
         status = f"Failed to fban in {len(failed)}/{total} feds.\n"
         for i in failed:
             status += "• " + i + "\n"
-        success = False
     else:
         status = f"<b>Success!</b> Fbanned in {total} feds."
         if len(r_update) != 0:
             for i in r_update:
                 status += f"\n• {i}"
-        success = True
     msg_ = (
-        fban_arg[3].format(u_link)
+        fban_arg[3].format(reported, u_link)
         + f"\n**ID:** <code>{u_id}</code>\n**Reason:** {reason}\n**Status:** {status}"
     )
-    break_line = "\n" if success else ""
-    log_proof_in = (
-        f"<a href='{log_fwd.link}'><b>channel</b></a>"
-        if "-r" not in message.flags
-        else "<b>channel</b>"
+    await message.edit(msg_, disable_web_page_preview=True)
+    await userge.send_message(
+        int(FBAN_LOG_CHANNEL), msg_, disable_web_page_preview=True
     )
-    chat_proof_in = (
-        f"<a href='{reply.link}'><b>{message.chat.title}</b></a>"
-        if (message.chat.type != "private")
-        else "<b>PRIVATE</b>"
-    )
-    if "-s" not in message.flags:
-        chat_msg_ = f"{msg_}{break_line}<b>Proof</b> logged in {log_proof_in}."
-        log_msg_ = f"{msg_}{break_line}<b>Proof</b> in {chat_proof_in} chat."
-    else:
-        chat_msg_ = msg_
-        log_msg_ = msg_
-    await message.edit(chat_msg_, disable_web_page_preview=True)
-    await userge.send_message(PROOF_CHANNEL, log_msg_, disable_web_page_preview=True)
 
 
 @userge.on_cmd(
@@ -425,7 +435,11 @@ async def fban_m(message: Message):
         ):
             cant += 1
             continue
-        await mass_fban(user, reason)
+        fail = 0
+        try:
+            await mass_fban(user, reason)
+        except BaseException:
+            fail += 1
         ban += 1
         prog = user_n / len(input) * 100
         prog_1, prog_2 = True, True
@@ -539,9 +553,9 @@ async def fban_lst_(message: Message):
     total = 0
     async for data in FED_LIST.find():
         total += 1
-        id_ = f"{data['chat_id']}" if "-id" in message.flags else ""
-        br_line = "\n          " if "-id" in message.flags else ""
-        out += f"• Fed: <b>{data['fed_name']}</b>{br_line}{id_}\n"
+        chat_id = data["chat_id"]
+        id_ = f"'<code>{chat_id}</code>' - " if "-id" in message.flags else ""
+        out += f"• Fed: {id_}<b>{data['fed_name']}</b>\n"
     await message.edit_or_send_as_file(
         f"**Connected federations: [{total}]**\n\n" + out
         if out
