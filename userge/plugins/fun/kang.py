@@ -46,6 +46,8 @@ async def kang_(message: Message):
     """kang a sticker"""
     user = await userge.get_me()
     replied = message.reply_to_message
+    await message.edit("`Kanging in log channel...`", del_in=1)
+    kang_msg = await userge.send_message(Config.LOG_CHANNEL_ID, "`Processing...`")
     photo = None
     emoji_ = None
     is_anim = False
@@ -59,19 +61,19 @@ async def kang_(message: Message):
             is_anim = True
         elif replied.sticker:
             if not replied.sticker.file_name:
-                await message.edit("`Sticker has no Name!`")
+                await kang_msg.edit("`Sticker has no Name!`")
                 return
             emoji_ = replied.sticker.emoji
             is_anim = replied.sticker.is_animated
             if not replied.sticker.file_name.endswith(".tgs"):
                 resize = True
         else:
-            await message.edit("`Unsupported File!`")
+            await kang_msg.edit("`Unsupported File!`")
             return
-        await message.edit(f"`{random.choice(KANGING_STR)}`")
+        await kang_msg.edit(f"`{random.choice(KANGING_STR)}`")
         photo = await userge.download_media(message=replied, file_name=Config.DOWN_PATH)
     else:
-        await message.edit("`I can't kang that...`")
+        await kang_msg.edit("`I can't kang that...`")
         return
     if photo:
         args = message.filtered_input_str.split()
@@ -115,7 +117,7 @@ async def kang_(message: Message):
                 try:
                     await conv.send_message("/addsticker")
                 except YouBlockedUser:
-                    await message.edit("first **unblock** @Stickers")
+                    await kang_msg.edit("first **unblock** @Stickers")
                     return
                 await conv.get_response(mark_read=True)
                 await conv.send_message(packname)
@@ -153,22 +155,19 @@ async def kang_(message: Message):
                         await conv.get_response(mark_read=True)
                         await conv.send_message(packname)
                         await conv.get_response(mark_read=True)
-                        if "-d" in message.flags:
-                            await message.delete()
-                        else:
-                            out = (
-                                "__kanged__"
-                                if "-s" in message.flags
-                                else f"[kanged](t.me/addstickers/{packname})"
-                            )
-                            await message.edit(
-                                f"**Sticker** {out} __in a Different Pack__**!**"
-                            )
+                        out = (
+                            "__kanged__"
+                            if "-s" in message.flags
+                            else f"[kanged](t.me/addstickers/{packname})"
+                        )
+                        await kang_msg.edit(
+                            f"**Sticker** {out} __in a Different Pack__**!**"
+                        )
                         return
                 await conv.send_document(photo)
                 rsp = await conv.get_response(mark_read=True)
                 if "Sorry, the file type is invalid." in rsp.text:
-                    await message.edit(
+                    await kang_msg.edit(
                         "`Failed to add sticker, use` @Stickers "
                         "`bot to add the sticker manually.`"
                     )
@@ -178,12 +177,12 @@ async def kang_(message: Message):
                 await conv.send_message("/done")
                 await conv.get_response(mark_read=True)
         else:
-            await message.edit("`Brewing a new Pack...`")
+            await kang_msg.edit("`Brewing a new Pack...`")
             async with userge.conversation("Stickers") as conv:
                 try:
                     await conv.send_message(cmd)
                 except YouBlockedUser:
-                    await message.edit("first **unblock** @Stickers")
+                    await kang_msg.edit("first **unblock** @Stickers")
                     return
                 await conv.get_response(mark_read=True)
                 await conv.send_message(packnick)
@@ -191,7 +190,7 @@ async def kang_(message: Message):
                 await conv.send_document(photo)
                 rsp = await conv.get_response(mark_read=True)
                 if "Sorry, the file type is invalid." in rsp.text:
-                    await message.edit(
+                    await kang_msg.edit(
                         "`Failed to add sticker, use` @Stickers "
                         "`bot to add the sticker manually.`"
                     )
@@ -207,15 +206,12 @@ async def kang_(message: Message):
                 await conv.get_response(mark_read=True)
                 await conv.send_message(packname)
                 await conv.get_response(mark_read=True)
-        if "-d" in message.flags:
-            await message.delete()
-        else:
-            out = (
-                "__kanged__"
-                if "-s" in message.flags
-                else f"[kanged](t.me/addstickers/{packname})"
-            )
-            await message.edit(f"**Sticker** {out}**!**")
+        out = (
+            "__kanged__"
+            if "-s" in message.flags
+            else f"[kanged](t.me/addstickers/{packname})"
+        )
+        await kang_msg.edit(f"**Sticker** {out}**!**")
         if os.path.exists(str(photo)):
             os.remove(photo)
 

@@ -35,10 +35,9 @@ from .bot.utube_inline import (
     ytsearch_data,
 )
 from .fun.stylish import Styled, font_gen
+from .jutsu.ivotings import vote_buttons
 from .misc.redditdl import reddit_thumb_link
 from .utils.notes import get_inote
-
-MEDIA_ = get_collection("ALIVE_MEDIA")
 
 CHANNEL = userge.getCLogger(__name__)
 
@@ -58,23 +57,25 @@ _CATEGORY = {
 }
 # Database
 SAVED_SETTINGS = get_collection("CONFIGS")
+VOTE = get_collection("VOTES")
+SEEN_BY = get_collection("SEEN_BY")
 REPO_X = InlineQueryResultArticle(
     title="Repo",
     input_message_content=InputTextMessageContent("**Here's how to setup USERGE-X** "),
-    url="https://github.com/code-rgb/USERGE-X",
+    url="https://github.com/ashwinstr/UX-jutsu",
     description="Setup Your Own",
     thumb_url="https://telegra.ph/file/8fa91f9c7f6f4f6b8fa6c.jpg",
     reply_markup=InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton(
-                    "🔥 USERGE-X Repo", url="https://github.com/code-rgb/USERGE-X"
+                    "🔥 USERGE-X Repo", url="https://github.com/ashwinstr/UX-jutsu"
                 ),
                 InlineKeyboardButton(
                     "🚀 Deploy USERGE-X",
                     url=(
                         "https://heroku.com/deploy?template="
-                        "https://github.com/code-pms/MyGpack"
+                        "https://github.com/ash/MyGpack"
                     ),
                 ),
             ]
@@ -82,19 +83,21 @@ REPO_X = InlineQueryResultArticle(
     ),
 )
 
-media_link = ""
+media_, alive_media, media_type = None, None, None
 
 
 async def _init() -> None:
+    global media_, alive_media, media_type
     data = await SAVED_SETTINGS.find_one({"_id": "CURRENT_CLIENT"})
     if data:
         Config.USE_USER_FOR_CLIENT_CHECKS = bool(data["is_user"])
     media_ = await SAVED_SETTINGS.find_one({"_id": "ALIVE_MEDIA"})
     if media_:
-        global media_link
-        media_link = media_["url"]
+        Config.NEW_ALIVE_MEDIA = media_["url"]
+        Config.ALIVE_MEDIA_TYPE = media_["type"]
     else:
-        media_link = "https://telegra.ph/file/e7c9bc9cdf7cae7e8d532.mp4"
+        Config.NEW_ALIVE_MEDIA = "https://telegra.ph/file/1fb4c193b5ac0c593f528.jpg"
+        Config.ALIVE_MEDIA_TYPE = "photo"
 
 
 @userge.on_cmd(
@@ -161,9 +164,8 @@ if userge.has_bot:
     def check_owner(func):
         async def wrapper(_, c_q: CallbackQuery):
             if c_q.from_user and (
-                c_q.from_user.id
-                in Config.OWNER_ID
-                # or c_q.from_user.id in Config.SUDO_USERS
+                c_q.from_user.id in Config.OWNER_ID
+                or c_q.from_user.id in Config.TRUSTED_SUDO_USERS
             ):
                 await c_q.answer()
                 try:
@@ -640,85 +642,22 @@ if userge.has_bot:
                 me = await userge.get_me()
                 alive_info = Bot_Alive.alive_info(me)
                 buttons = Bot_Alive.alive_buttons()
-                if media_link:
-                    results.append(
-                        InlineQueryResultAnimation(
-                            photo_url=media_link,
-                            caption=alive_info,
-                            reply_markup=buttons,
-                        )
-                    )
-                    return
-                if not Config.ALIVE_MEDIA:
+                if Config.ALIVE_MEDIA_TYPE == "photo":
                     results.append(
                         InlineQueryResultPhoto(
-                            photo_url=Bot_Alive.alive_default_imgs(),
+                            photo_url=Config.NEW_ALIVE_MEDIA,
                             caption=alive_info,
                             reply_markup=buttons,
                         )
                     )
-                    return
-                else:
-                    if Config.ALIVE_MEDIA.lower().strip() == "false":
-                        results.append(
-                            InlineQueryResultArticle(
-                                title="USERGE-X",
-                                input_message_content=InputTextMessageContent(
-                                    alive_info, disable_web_page_preview=True
-                                ),
-                                description="ALIVE",
-                                reply_markup=buttons,
-                            )
+                elif Config.ALIVE_MEDIA_TYPE == "gif":
+                    results.append(
+                        InlineQueryResultAnimation(
+                            animation_url=Config.NEW_ALIVE_MEDIA,
+                            caption=alive_info,
+                            reply_markup=buttons,
                         )
-                    else:
-                        _media_type, _media_url = await Bot_Alive.check_media_link(
-                            Config.ALIVE_MEDIA
-                        )
-                        if _media_type == "url_gif":
-                            results.append(
-                                InlineQueryResultAnimation(
-                                    animation_url=_media_url,
-                                    caption=alive_info,
-                                    reply_markup=buttons,
-                                )
-                            )
-                        elif _media_type == "url_image":
-                            results.append(
-                                InlineQueryResultPhoto(
-                                    photo_url=_media_url,
-                                    caption=alive_info,
-                                    reply_markup=buttons,
-                                )
-                            )
-                        elif _media_type == "tg_media":
-                            c_file_id = Bot_Alive.get_bot_cached_fid()
-                            if c_file_id is None:
-                                try:
-                                    c_file_id = get_file_id(
-                                        await userge.bot.get_messages(
-                                            _media_url[0], _media_url[1]
-                                        )
-                                    )
-                                except Exception as b_rr:
-                                    await CHANNEL.log(str(b_rr))
-                            if Bot_Alive.is_photo(c_file_id):
-                                results.append(
-                                    InlineQueryResultCachedPhoto(
-                                        file_id=c_file_id,
-                                        caption=alive_info,
-                                        reply_markup=buttons,
-                                    )
-                                )
-                            else:
-                                results.append(
-                                    InlineQueryResultCachedDocument(
-                                        title="USERGE-X",
-                                        file_id=c_file_id,
-                                        caption=alive_info,
-                                        description="ALIVE",
-                                        reply_markup=buttons,
-                                    )
-                                )
+                    )
 
             if string == "geass":
                 results.append(
@@ -1027,6 +966,122 @@ if userge.has_bot:
                                     )
                                 )
 
+            if str_y[0] == "voting" and len(str_y) == 2:
+                id_ = userge.rnd_id()
+                up = 0
+                down = 0
+                anon = False
+                tele_ = bool(
+                    re.search(
+                        r"http[s]?\:\/\/telegra\.ph\/file\/.*\.(gif|jpg|png|jpeg)$",
+                        str_y[1],
+                    )
+                )
+                if tele_:
+                    results.append(
+                        InlineQueryResultPhoto(
+                            photo_url=str_y[1],
+                            title="Vote.",
+                            description="Vote your opinion.",
+                            caption="Vote your opinion.",
+                            reply_markup=vote_buttons(up, down, anon, id_),
+                        )
+                    )
+                else:
+                    results.append(
+                        InlineQueryResultArticle(
+                            title="Vote.",
+                            input_message_content=InputTextMessageContent(str_y[1]),
+                            description="Vote your opinion.",
+                            reply_markup=vote_buttons(up, down, anon, id_),
+                        )
+                    )
+
+            if str_y[0] == "anon_vote" and len(str_y) == 2:
+                id_ = userge.rnd_id()
+                up = 0
+                down = 0
+                anon = True
+                tele_ = bool(
+                    re.search(
+                        r"http[s]?\:\/\/telegra\.ph\/file\/.*\.(gif|jpg|png|jpeg)$",
+                        str_y[1],
+                    )
+                )
+                if tele_:
+                    results.append(
+                        InlineQueryResultPhoto(
+                            photo_url=str_y[1],
+                            title="Vote.",
+                            description="Vote your opinion.",
+                            caption="Vote your opinion.",
+                            reply_markup=vote_buttons(up, down, anon, id_),
+                        )
+                    )
+                else:
+                    results.append(
+                        InlineQueryResultArticle(
+                            title="Vote.",
+                            input_message_content=InputTextMessageContent(str_y[1]),
+                            description="Vote your opinion.",
+                            reply_markup=vote_buttons(up, down, anon, id_),
+                        )
+                    )
+
+            if str_y[0] == "attent" and len(str_y) == 2:
+                notice = str_y[-1]
+                rnd_id = userge.rnd_id()
+                btn_ = InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                text="What is it!!?", callback_data=f"notice_{rnd_id}"
+                            ),
+                            InlineKeyboardButton(
+                                text="Seen by.", callback_data=f"noticeseen_{rnd_id}"
+                            ),
+                        ],
+                    ]
+                )
+
+                attention = os.path.join(Config.CACHE_PATH, "notice.json")
+                notice_data = {
+                    rnd_id: {
+                        "sender": iq_user_id,
+                        "notice": notice,
+                        "seen": [],
+                        "user_first_names": [],
+                    }
+                }
+                if os.path.exists(attention):
+                    with open(attention) as outfile:
+                        view_data = ujson.load(outfile)
+                    view_data.update(notice_data)
+                else:
+                    view_data = notice_data
+                with open(attention, "w") as r:
+                    ujson.dump(view_data, r, indent=4)
+                await SEEN_BY.insert_one(
+                    {
+                        "_id": rnd_id,
+                        "seen": view_data[rnd_id]["seen"],
+                        "notice": view_data[rnd_id]["notice"],
+                        "user_first_names": view_data[rnd_id]["user_first_names"],
+                        "sender": view_data[rnd_id]["sender"],
+                    }
+                )
+                results.append(
+                    InlineQueryResultArticle(
+                        title="Attention please!",
+                        input_message_content=InputTextMessageContent(
+                            "Attention message sent by my owner."
+                        ),
+                        description="Attention everyone!!!",
+                        thumb_url="https://telegra.ph/file/1e389fef521a6cc86cfdf.jpg",
+                        reply_markup=btn_,
+                    )
+                )
+
             if str_y[0].lower() == "stylish" and len(str_y) == 2:
                 results = []
                 for f_name in Styled.font_choice:
@@ -1164,7 +1219,7 @@ if userge.has_bot:
             MAIN_MENU = InlineQueryResultArticle(
                 title="Main Menu",
                 input_message_content=InputTextMessageContent(" 𝐒𝐇𝐀𝐑𝐈𝐍𝐆𝐀𝐍 MAIN MENU "),
-                url="https://github.com/code-rgb/USERGE-X",
+                url="https://github.com/ashwinstr/UX-jutsu",
                 description="Sharingan Main Menu",
                 thumb_url="https://telegra.ph/file/8fa91f9c7f6f4f6b8fa6c.jpg",
                 reply_markup=InlineKeyboardMarkup(main_menu_buttons()),

@@ -12,6 +12,7 @@ LOG = userge.getLogger(__name__)
 CHANNEL = userge.getCLogger(__name__)
 
 FROZEN = get_collection("FROZEN")
+UPDATE_MSG = get_collection("UPDATE_MSG")
 
 
 async def _init():
@@ -45,8 +46,8 @@ async def check_update(message: Message):
     await message.edit("`Checking for updates, please wait....`")
     if Config.HEROKU_ENV:
         await message.edit(
-            "**Heroku App detected !**, Updates have been disabled for Safety.\n"
-            "Your Bot Will Auto Update when Heroku restart"
+            "**Heroku App detected !** Updates have been disabled for Safety.\n"
+            f"To check changelog do `{Config.CMD_TRIGGER}fetchup`, and to pull updates do `{Config.CMD_TRIGGER}restart -h`."
         )
         return
     flags = list(message.flags)
@@ -108,9 +109,21 @@ async def check_update(message: Message):
                 f"**PULLED update from [{branch}]:\n\n📄 CHANGELOG 📄**\n\n{out}"
             )
             if not push_to_heroku:
-                await message.edit(
-                    "**USERGE-X Successfully Updated!**\n"
+                update = await message.edit(
+                    "**USERGE-X update process started!**\n"
                     "`Now restarting... Wait for a while!`",
+                )
+                be_update = time()
+                await UPDATE_MSG.update_one(
+                    {"_id": "UPDATE_MSG"},
+                    {"$set": {"message": f"{update.chat.id}/{update.message_id}"}},
+                    upsert=True,
+                )
+                await UPDATE_MSG.update_one(
+                    {"_id": "UPDATE_MSG"}, {"$set": {"time": be_update}}, upsert=True
+                )
+                await UPDATE_MSG.update_one(
+                    {"_id": "UPDATE_MSG"}, {"$set": {"process": "updated"}}, upsert=True
                 )
                 asyncio.get_event_loop().create_task(userge.restart(True))
         elif push_to_heroku:
